@@ -1,8 +1,8 @@
 # 📦 Laravel WMS 倉儲管理系統
 
-這是一個基於 Laravel 10+、Docker、Redis 和 MySQL 打造的倉儲管理系統原型，模擬入庫、庫存管理和出庫流程。專案採用模組化架構，整合角色權限控管（RBAC）、審計日誌與 CI/CD，適合企業級應用參考或學習。
+這是一個基於 Laravel 10+ 的倉儲管理系統核心程式碼，模擬入庫、庫存管理和出庫流程。專案採用模組化架構，整合角色權限控管（RBAC）、事件驅動與審計日誌，適合企業級應用參考或學習。
 
-![CI/CD](https://github.com/BpsEason/laravel-wms-system/actions/workflows/main.yml/badge.svg)
+> **注意**：本倉庫僅包含核心程式碼（`app` 目錄下的 Service、Repository、Model 等）。若需運行完整系統，請參考「環境準備」與「快速啟動」段落，整合至完整 Laravel 專案。
 
 ---
 
@@ -12,7 +12,7 @@
 
 - 展示 **Laravel 模組化架構**（Service/Repository 模式）
 - 實現 **角色權限控管（RBAC）** 與 **操作審計日誌**
-- 提供 **Docker 容器化** 與 **CI/CD 就緒** 的開發環境
+- 提供 **事件驅動** 與 **高併發處理** 的設計參考
 - 模擬真實 **倉儲物流業務邏輯**，方便擴展
 
 ---
@@ -25,9 +25,9 @@
 | 認證與權限       | Sanctum + Spatie Laravel Permission (RBAC) |
 | 快取與佇列       | Redis                                       |
 | 資料庫            | MySQL / MariaDB                            |
-| 容器化            | Docker + docker-compose                    |
-| CI/CD             | GitHub Actions                             |
-| 測試框架         | PHPUnit (功能與單元測試)                   |
+| 容器化            | Docker + docker-compose（參考）             |
+| CI/CD             | GitHub Actions（參考）                     |
+| 測試框架         | PHPUnit（功能與單元測試）                  |
 | 審計日誌         | 自訂 Model 與事件驅動日誌                  |
 
 ---
@@ -236,20 +236,70 @@ A：為避免庫存超賣或不一致，採用以下策略：
 
 ---
 
-## 🚀 快速啟動（Docker）
+## 🌐 環境準備
 
-1. 複製專案並進入目錄：
+本倉庫僅包含核心程式碼，需整合至完整 Laravel 專案才能運行。以下是環境準備步驟：
+
+1. **建立 Laravel 專案**：
    ```bash
-   git clone https://github.com/BpsEason/laravel-wms-system.git
+   composer create-project laravel/laravel laravel-wms-system
    cd laravel-wms-system
    ```
 
-2. 啟動 Docker 容器：
+2. **複製核心程式碼**：
+   - 將本倉庫的 `app` 目錄複製到新專案的 `app` 目錄，覆蓋原有檔案。
+   - 確保 `app/Services`、`app/Repositories`、`app/Models` 等目錄正確合併。
+
+3. **安裝相依套件**：
+   - 在 `composer.json` 中新增以下相依性：
+     ```json
+     {
+         "require": {
+             "spatie/laravel-permission": "^5.0",
+             "laravel/sanctum": "^3.0"
+         }
+     }
+     ```
+   - 執行：
+     ```bash
+     composer install
+     ```
+
+4. **設定資料庫與 Redis**：
+   - 配置 `.env` 檔案，設定 MySQL 和 Redis 連線：
+     ```env
+     DB_CONNECTION=mysql
+     DB_HOST=127.0.0.1
+     DB_PORT=3306
+     DB_DATABASE=wms
+     DB_USERNAME=root
+     DB_PASSWORD=secret
+
+     REDIS_HOST=127.0.0.1
+     REDIS_PORT=6379
+     QUEUE_CONNECTION=redis
+     ```
+
+5. **執行遷移與種子**：
+   - 根據你的模型（`InboundOrder`、`Inventory` 等）建立對應的遷移檔案（可參考程式碼中的關係）。
+   - 執行：
+     ```bash
+     php artisan migrate
+     php artisan db:seed
+     ```
+
+---
+
+## 🚀 快速啟動（參考）
+
+以下是假設完整專案結構下的 Docker 啟動流程，供參考。若需直接運行，需補充 `docker-compose.yml` 等檔案。
+
+1. 啟動 Docker 容器：
    ```bash
    docker-compose up -d --build
    ```
 
-3. 安裝相依套件與初始化：
+2. 安裝相依套件與初始化：
    ```bash
    docker-compose exec app composer install
    docker-compose exec app php artisan key:generate
@@ -257,13 +307,41 @@ A：為避免庫存超賣或不一致，採用以下策略：
    docker-compose exec app php artisan migrate --seed
    ```
 
-4. 訪問 API： [http://localhost](http://localhost)
+3. 訪問 API： [http://localhost](http://localhost)
 
-🧪 **預設帳號**：
+🧪 **預設帳號**（需自行實作 Seeder）：
 - 管理員：`admin@example.com` / `password`
 - 倉管經理：`manager@example.com` / `password`
 - 揀貨員：`picker@example.com` / `password`
 - 收貨員：`receiver@example.com` / `password`
+
+> **備註**：目前倉庫不含 `docker-compose.yml`，可參考以下範例自行建立：
+> ```yaml
+> version: '3.8'
+> services:
+>   app:
+>     build:
+>       context: .
+>       dockerfile: Dockerfile
+>     ports:
+>       - "80:80"
+>     volumes:
+>       - .:/var/www/html
+>     depends_on:
+>       - mysql
+>       - redis
+>   mysql:
+>     image: mysql:8.0
+>     environment:
+>       MYSQL_ROOT_PASSWORD: secret
+>       MYSQL_DATABASE: wms
+>     ports:
+>       - "3306:3306"
+>   redis:
+>     image: redis:6
+>     ports:
+>       - "6379:6379"
+> ```
 
 ---
 
@@ -277,26 +355,25 @@ A：為避免庫存超賣或不一致，採用以下策略：
 ## 🧪 執行測試
 
 ```bash
-docker-compose exec app php artisan test
+php artisan test
 ```
 
-支援 PHPUnit，包含功能與單元測試。（可選 Pest 框架）
+支援 PHPUnit，包含功能與單元測試。（測試檔案需自行補充）
 
 ---
 
 ## 🧰 常用腳本
 
-- `create_project.sh`：一鍵建置完整專案結構
-- `docker-compose.yml`：整合 PHP、Nginx、MySQL 服務
-- `.github/workflows/main.yml`：CI 測試與 Docker 映像建置
+- **計畫補充**：`create_project.sh`（一鍵建置專案結構）
+- **計畫補充**：`.github/workflows/main.yml`（CI 測試與 Docker 映像建置）
 
 ---
 
 ## 🌐 部署準備
 
 - 支援 `.env.staging`、`.env.production` 環境設定
-- GitHub Actions 自動化流程：測試 → 建置 Docker 映像 → 推送
 - 相容 GCP（Cloud Run、GCE）或其他雲端部署
+- 建議使用 GitHub Actions 自動化測試與部署（需補充工作流程檔案）
 
 ---
 
@@ -306,17 +383,6 @@ docker-compose exec app php artisan test
 
 - **可擴展架構**：適用高併發物流系統
 - **Laravel 最佳實踐**：Service、Repository、Event、Job 等模式
-- **現代 DevOps**：Docker 容器化與 CI/CD 整合
+- **技術深度**：高併發處理、事件驅動與權限控管
 
 如果你正在尋找熟悉 Laravel、能寫出穩健、可測試、企業級程式碼的工程師，這個專案是最佳證明。
-
----
-
-## 📫 聯繫方式
-
-由 [Eason](https://github.com/BpsEason) 打造，歡迎交流！  
-有任何建議或合作機會，隨時聯繫。
-
----
-
-> 「先把東西做好，再快速推出去。」
