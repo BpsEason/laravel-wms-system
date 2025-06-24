@@ -1,0 +1,76 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: secret
+          MARIADB_DATABASE: laravel-wms-system
+          MARIADB_USER: user
+          MARIADB_PASSWORD: secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, zip, bcmath, intl
+          coverage: none # Disable Xdebug or PCOV for faster setup if not needed
+
+      - name: Copy .env
+        run: cp .env.example .env
+
+      - name: Install Composer Dependencies
+        run: composer install --no-ansi --no-interaction --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Generate App Key
+        run: php artisan key:generate
+
+      - name: Run Migrations
+        run: php artisan migrate --force # --force is needed in CI to confirm execution
+
+      - name: Run Seeders (for roles, permissions, admin user)
+        run: php artisan db:seed --class=RolesAndPermissionsSeeder --force
+        run: php artisan db:seed --class=AdminUserSeeder --force
+
+      - name: Run Tests
+        run: php artisan test # Or ./vendor/bin/phpunit
+
+      - name: Build Docker Image (Optional, to GitHub Packages)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker build . --file Dockerfile --tag ghcr.io/${{ github.repository }}/app:latest
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push ghcr.io/${{ github.repository }}/app:latest
+
+      - name: Upload Test Results as Artifact (Optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: storage/logs/test_results.xml # Example, adjust if you have a specific test report
+          # If you use JUnit format, you can integrate with GitHub's test summary
+          # path: junit.xml
